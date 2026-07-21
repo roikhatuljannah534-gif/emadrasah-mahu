@@ -3719,5 +3719,88 @@
             switchTab('dashboard');
         }
     </script>
+    <!-- ==================== AUTOMATIC FIREBASE SYNC BRIDGE (ANTI HILANG & MULTI PERANGKAT) ==================== -->
+<script type="module">
+    // 1. Import SDK Firebase Realtime Database Resmi
+    import { initializeApp } from "https://gstatic.com";
+    import { getDatabase, ref, set, onValue } from "https://gstatic.com";
+
+    // 2. Konfigurasi Kunci Firebase eMadrasah Anda
+    const firebaseConfig = {
+        apiKey: "AIzaSyAE9xDP1mnWlIjPxyu5aI4xqc5eYd2UMsw",
+        authDomain: "://firebaseapp.com",
+        projectId: "emadrasah-mahu",
+        storageBucket: "emadrasah-mahu.firebasestorage.app",
+        messagingSenderId: "1017664890187",
+        appId: "1:1017664890187:web:a56ae1a1efbdc854a274ce",
+        measurementId: "G-JB12NTQ3EQ"
+    };
+
+    // 3. Inisialisasi Koneksi Cloud
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const cloudRootRef = ref(db, "emadrasah_cloud_data");
+
+    // Flag internal untuk mencegah bentrokan putaran data (looping update)
+    let isSyncingFromCloud = false;
+
+    // 4. SINKRONISASI MASUK: Ambil data terbaru dari Cloud saat aplikasi dibuka di perangkat mana pun
+    onValue(cloudRootRef, (snapshot) => {
+        if (snapshot.exists()) {
+            const dataDariCloud = snapshot.val();
+            isSyncingFromCloud = true;
+
+            // Memasukkan seluruh data cloud ke dalam LocalStorage masing-masing modul web Anda
+            Object.keys(dataDariCloud).forEach((key) => {
+                localStorage.setItem(key, dataDariCloud[key]);
+            });
+
+            // Memicu otomatis fungsi render bawaan kode e-Madrasah Anda agar layar langsung ter-update
+            setTimeout(() => {
+                if (typeof renderSiswaTable === "function") renderSiswaTable();
+                if (typeof renderGuruTable === "function") renderGuruTable();
+                if (typeof renderMapelTable === "function") renderMapelTable();
+                if (typeof renderRombelTable === "function") renderRombelTable();
+                if (typeof updateDashboardStats === "function") updateDashboardStats();
+                // Jika aplikasi Anda memiliki fungsi render utama lainnya, tambahkan di bawah ini:
+                
+                isSyncingFromCloud = false;
+            }, 100);
+        }
+    });
+
+    // 5. SINKRONISASI KELUAR: Interseptor Otomatis (Menangkap setiap kali ada data baru yang disimpan)
+    const originalSetItem = localStorage.setItem;
+    localStorage.setItem = function(key, value) {
+        // Panggil fungsi bawaan asli agar sistem lokal tetap berjalan normal
+        originalSetItem.apply(this, arguments);
+
+        // Jika perubahan data bukan berasal dari tarikan cloud, kirimkan langsung ke Firebase Cloud
+        if (!isSyncingFromCloud) {
+            // Ambil seluruh isi localStorage saat ini untuk diamankan ke cloud pusat
+            const seluruhDataLokal = {};
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                // Abaikan key sistem atau themes jika ada, fokus ke data administrasi madrasah
+                if (k !== "theme" && k !== "sidebar-state") {
+                    seluruhDataLokal[k] = localStorage.getItem(k);
+                }
+            }
+
+            // Kirim satu paket data ke server Firebase secara real-time
+            set(cloudRootRef, seluruhDataLokal).catch((error) => {
+                console.error("Gagal sinkronisasi ke Firebase Cloud:", error);
+            });
+        }
+    };
+
+    // Tambahan penanganan jika ada klik tombol submit form untuk memastikan push data instan
+    window.addEventListener("submit", () => {
+        setTimeout(() => {
+            localStorage.setItem("sync_trigger", Date.now().toString());
+        }, 300);
+    });
+</script>
+
 </body>
 </html>
